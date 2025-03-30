@@ -1,0 +1,39 @@
+.editable {
+  cursor: pointer;
+}
+.center {
+  text-align: center;
+}
+.btn-group {
+  margin-top: 20px;
+}
+
+table td {
+  vertical-align: middle !important;
+}
+.align-middle {
+  vertical-align: middle !important;
+}
+.selected {
+  outline: 2px solid red;
+}
+.instructions {
+  cursor: pointer;
+  display: inline-block;
+  font-size: 18px;
+}
+.instructions-list {
+  display: none;
+  margin-top: 10px;
+  font-size: 14px;
+}
+.rotate {
+  transition: transform 0.3s;
+}
+.rotate.right {
+  transform: rotate(90deg);
+}
+.instructions-container {
+  display: flex;
+  align-items: center;
+}
