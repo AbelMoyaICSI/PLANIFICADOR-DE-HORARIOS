@@ -11,19 +11,22 @@ $(document).ready(function() {
     return parseInt(parts[0], 10) * 60 + parseInt(parts[1], 10);
   }
 
-  // Convierte minutos a formato "HH:MM". Si los minutos son >=1440 (actividad que cruza la medianoche),
-  // se resta 1440 para mostrar la hora “real”.
+  // Convierte minutos a formato "HH:MM".
+  // Si los minutos son >= 1440 (actividad que cruza la medianoche), se resta 1440 y se indica "día siguiente".
   function minutesToTime(minutes) {
-    var m = minutes;
-    if(m >= 1440) {
-      m = m - 1440;
+    if(minutes >= 1440) {
+      var mReal = minutes - 1440;
+      var h = Math.floor(mReal / 60);
+      var min = mReal % 60;
+      return (h < 10 ? "0" + h : h) + ":" + (min < 10 ? "0" + min : min) + " (d.sig)";
+    } else {
+      var h = Math.floor(minutes / 60);
+      var min = minutes % 60;
+      return (h < 10 ? "0" + h : h) + ":" + (min < 10 ? "0" + min : min);
     }
-    var h = Math.floor(m / 60);
-    var min = m % 60;
-    return (h < 10 ? "0" + h : h) + ":" + (min < 10 ? "0" + min : min);
   }
   
-  // Compara dos valores numéricos (minutos)
+  // Comparación de minutos
   function compareMinutes(m1, m2) {
     return m1 - m2;
   }
@@ -73,10 +76,10 @@ $(document).ready(function() {
     $("#horariosBody tr").each(function() {
       let timeRange = $(this).find("td:first").text();
       let parts = timeRange.split(" - ");
-      let rowStart = timeToMinutes(parts[0]);
-      let rowEnd = timeToMinutes(parts[1]);
+      let rowStart = timeToMinutes(parts[0].split(" ")[0]); // ignorar indicativo (d.sig) si existe
+      let rowEnd = timeToMinutes(parts[1].split(" ")[0]);
       $(this).find("td").each(function(index) {
-        if (index === 0) return; // omitir la columna de "Hora"
+        if (index === 0) return; // omitir columna "Hora"
         let dia = $(this).attr("data-day");
         let act = actividades.find(
           a =>
@@ -172,8 +175,8 @@ $(document).ready(function() {
     let $row = $cell.closest("tr");
     let timeRange = $row.find("td:first").text().trim();
     let parts = timeRange.split(" - ");
-    let rowStart = timeToMinutes(parts[0]);
-    let rowEnd = timeToMinutes(parts[1]);
+    let rowStart = timeToMinutes(parts[0].split(" ")[0]);
+    let rowEnd = timeToMinutes(parts[1].split(" ")[0]);
     let dia = $cell.attr("data-day");
     let nombre = $cell.text().trim();
     for (let i = 0; i < actividades.length; i++) {
@@ -190,12 +193,18 @@ $(document).ready(function() {
     return -1;
   }
   
-  // Al hacer clic en una celda se selecciona la actividad y se abre el modal de edición (si existe)
+  // Evento de un solo clic: Seleccionar la actividad (para eliminar, por ejemplo)
   $("#horariosBody").on("click", "td.editable", function() {
     if ($(this).index() === 0) return;
     $("td").removeClass("selected");
     $(this).addClass("selected");
     selectedCell = $(this);
+    selectedActivityIndex = buscarActividadPorCelda($(this));
+  });
+  
+  // Evento de doble clic: Abrir modal de edición
+  $("#horariosBody").on("dblclick", "td.editable", function() {
+    if ($(this).index() === 0) return;
     let idx = buscarActividadPorCelda($(this));
     if (idx >= 0) {
       selectedActivityIndex = idx;
