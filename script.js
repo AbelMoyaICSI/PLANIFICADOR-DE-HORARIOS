@@ -3,27 +3,38 @@ $(document).ready(function() {
   var actividades = [];
   var selectedActivityIndex = null; 
   var selectedCell = null;          
-
   var dias = ["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"];
-  
- 
-  function compareHours(h1, h2) {
-    var [a1, b1] = h1.split(":").map(Number);
-    var [a2, b2] = h2.split(":").map(Number);
-    if (a1 !== a2) return a1 - a2;
-    return b1 - b2;
+
+  // Convierte "HH:MM" a minutos desde la medianoche
+  function timeToMinutes(timeStr) {
+    var parts = timeStr.split(":");
+    return parseInt(parts[0], 10) * 60 + parseInt(parts[1], 10);
+  }
+
+  // Convierte minutos a formato "HH:MM". Si los minutos son >=1440 (actividad que cruza la medianoche),
+  // se resta 1440 para mostrar la hora “real”.
+  function minutesToTime(minutes) {
+    var m = minutes;
+    if(m >= 1440) {
+      m = m - 1440;
+    }
+    var h = Math.floor(m / 60);
+    var min = m % 60;
+    return (h < 10 ? "0" + h : h) + ":" + (min < 10 ? "0" + min : min);
   }
   
-
-  function checkOverlapAny(nombre, dia, horaInicio, horaFin) {
+  // Compara dos valores numéricos (minutos)
+  function compareMinutes(m1, m2) {
+    return m1 - m2;
+  }
+  
+  // Verifica solapamiento usando tiempos en minutos
+  function checkOverlapAny(nombre, dia, startM, endM) {
     for (let i = 0; i < actividades.length; i++) {
       let a = actividades[i];
       if (a.dia.toLowerCase() === dia.toLowerCase()) {
-
-        if (
-          compareHours(horaInicio, a.horaFin) < 0 &&
-          compareHours(horaFin, a.horaInicio) > 0
-        ) {
+        // Si hay solapamiento: new.start < existing.end y new.end > existing.start
+        if (startM < a.endM && endM > a.startM) {
           return a; 
         }
       }
@@ -31,19 +42,16 @@ $(document).ready(function() {
     return null;
   }
   
-
-
+  // Construir la tabla según los intervalos de tiempo
   function construirTabla() {
-
     let timePoints = [];
     actividades.forEach(act => {
-      timePoints.push(act.horaInicio);
-      timePoints.push(act.horaFin);
+      timePoints.push(act.startM);
+      timePoints.push(act.endM);
     });
-
+    // Eliminar duplicados y ordenar
     timePoints = Array.from(new Set(timePoints));
-    timePoints.sort(compareHours);
-  
+    timePoints.sort((a, b) => a - b);
 
     $("#horariosBody").empty();
     let rows = [];
@@ -51,9 +59,9 @@ $(document).ready(function() {
       let start = timePoints[i];
       let end = timePoints[i + 1];
       let $tr = $("<tr></tr>");
-      $tr.append("<td>" + start + " - " + end + "</td>");
+      $tr.append("<td>" + minutesToTime(start) + " - " + minutesToTime(end) + "</td>");
       dias.forEach(dia => {
-        let $td = $("<td data-day='" + dia + "' data-start='" + start + "' data-end='" + end + "'></td>");
+        let $td = $("<td data-day='" + dia + "' data-start='" + start + "' data-end='" + end + "' class='editable'></td>");
         $tr.append($td);
       });
       rows.push($tr);
@@ -61,18 +69,20 @@ $(document).ready(function() {
 
     rows.forEach(row => $("#horariosBody").append(row));
 
-
+    // Rellenar celdas según las actividades
     $("#horariosBody tr").each(function() {
       let timeRange = $(this).find("td:first").text();
-      let [rowStart, rowEnd] = timeRange.split(" - ");
+      let parts = timeRange.split(" - ");
+      let rowStart = timeToMinutes(parts[0]);
+      let rowEnd = timeToMinutes(parts[1]);
       $(this).find("td").each(function(index) {
         if (index === 0) return; // omitir la columna de "Hora"
         let dia = $(this).attr("data-day");
         let act = actividades.find(
           a =>
             a.dia.toLowerCase() === dia &&
-            compareHours(a.horaInicio, rowStart) <= 0 &&
-            compareHours(a.horaFin, rowEnd) >= 0
+            a.startM <= rowStart &&
+            a.endM >= rowEnd
         );
         if (act) {
           $(this).text(act.nombre);
@@ -85,7 +95,8 @@ $(document).ready(function() {
         }
       });
     });
-  
+    
+    // Remover filas sin actividad
     $("#horariosBody tr").each(function() {
       let tieneActividad = false;
       $(this).find("td").each(function(index) {
@@ -98,8 +109,8 @@ $(document).ready(function() {
         $(this).remove();
       }
     });
-  
-
+    
+    // Fusionar celdas consecutivas con el mismo contenido y estilo en cada columna
     for (let col = 1; col <= dias.length; col++) {
       let prevCell = null;
       let rowspan = 1;
@@ -123,8 +134,15 @@ $(document).ready(function() {
     }
   }
   
+  // Agregar actividad, ajustando tiempos que cruzan la medianoche
   function agregarActividad(nombre, dia, horaInicio, horaFin, color) {
-    let conflict = checkOverlapAny(nombre, dia, horaInicio, horaFin);
+    let startM = timeToMinutes(horaInicio);
+    let endM = timeToMinutes(horaFin);
+    // Si la actividad cruza la medianoche, se ajusta sumándole 1440 minutos
+    if (endM <= startM) {
+      endM += 1440;
+    }
+    let conflict = checkOverlapAny(nombre, dia, startM, endM);
     if (conflict) {
       alert(
         "El horario de '" +
@@ -136,24 +154,26 @@ $(document).ready(function() {
           ") se cruza con '" +
           conflict.nombre +
           "' (" +
-          conflict.horaInicio +
+          minutesToTime(conflict.startM) +
           " - " +
-          conflict.horaFin +
+          minutesToTime(conflict.endM) +
           ") en " +
           dia +
           "."
       );
       return;
     }
-    actividades.push({ nombre, dia, horaInicio, horaFin, color });
+    actividades.push({ nombre, dia, horaInicio, horaFin, startM, endM, color });
     construirTabla();
   }
   
-
+  // Buscar actividad asociada a la celda clicada
   function buscarActividadPorCelda($cell) {
     let $row = $cell.closest("tr");
     let timeRange = $row.find("td:first").text().trim();
-    let [rowStart, rowEnd] = timeRange.split(" - ");
+    let parts = timeRange.split(" - ");
+    let rowStart = timeToMinutes(parts[0]);
+    let rowEnd = timeToMinutes(parts[1]);
     let dia = $cell.attr("data-day");
     let nombre = $cell.text().trim();
     for (let i = 0; i < actividades.length; i++) {
@@ -161,8 +181,8 @@ $(document).ready(function() {
       if (
         a.dia.toLowerCase() === dia.toLowerCase() &&
         a.nombre === nombre &&
-        compareHours(a.horaInicio, rowStart) <= 0 &&
-        compareHours(a.horaFin, rowEnd) >= 0
+        a.startM <= rowStart &&
+        a.endM >= rowEnd
       ) {
         return i;
       }
@@ -170,17 +190,41 @@ $(document).ready(function() {
     return -1;
   }
   
-
-  $("#horariosBody").on("click", "td", function() {
+  // Al hacer clic en una celda se selecciona la actividad y se abre el modal de edición (si existe)
+  $("#horariosBody").on("click", "td.editable", function() {
     if ($(this).index() === 0) return;
     $("td").removeClass("selected");
     $(this).addClass("selected");
     selectedCell = $(this);
     let idx = buscarActividadPorCelda($(this));
-    selectedActivityIndex = idx >= 0 ? idx : null;
+    if (idx >= 0) {
+      selectedActivityIndex = idx;
+      // Rellenar modal con los datos actuales de la actividad
+      $("#editNombre").val(actividades[idx].nombre);
+      $("#editColor").val(actividades[idx].color);
+      $("#editModal").modal("show");
+    } else {
+      selectedActivityIndex = null;
+    }
   });
   
-
+  // Guardar cambios desde el modal de edición
+  $("#saveEditBtn").click(function() {
+    if (selectedActivityIndex !== null) {
+      let nuevoNombre = $("#editNombre").val().trim();
+      let nuevoColor = $("#editColor").val();
+      if(nuevoNombre === "") {
+        alert("El nombre no puede estar vacío.");
+        return;
+      }
+      actividades[selectedActivityIndex].nombre = nuevoNombre;
+      actividades[selectedActivityIndex].color = nuevoColor;
+      $("#editModal").modal("hide");
+      construirTabla();
+    }
+  });
+  
+  // Botón Agregar Actividad
   $("#agregarBtn").click(function() {
     let nombre = $("#nombreActividad").val().trim();
     let dia = $("#dia").val();
@@ -192,15 +236,10 @@ $(document).ready(function() {
       alert("Por favor, completa todos los campos.");
       return;
     }
-    if (compareHours(horaFin, horaInicio) <= 0) {
-      alert("La hora de fin debe ser mayor que la de inicio.");
-      return;
-    }
-  
     agregarActividad(nombre, dia, horaInicio, horaFin, color);
   });
   
-
+  // Botón Eliminar Actividad
   $("#eliminarBtn").click(function() {
     if (selectedActivityIndex !== null && selectedActivityIndex >= 0) {
       actividades.splice(selectedActivityIndex, 1);
@@ -212,7 +251,7 @@ $(document).ready(function() {
     }
   });
   
-
+  // Botón Capturar la tabla como imagen
   $("#capturarBtn").click(function() {
     html2canvas(document.querySelector("#tablaHorarios")).then(function(canvas) {
       let link = document.createElement("a");
@@ -222,7 +261,7 @@ $(document).ready(function() {
     });
   });
   
-
+  // Mostrar/Ocultar instrucciones
   $(".instructions").click(function() {
     $(".instructions-list").slideToggle("slow");
     $(this).find("i").toggleClass("right");
